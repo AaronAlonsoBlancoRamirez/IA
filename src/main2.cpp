@@ -131,7 +131,7 @@ vector<int> reconstruct_path(const vector<int>& came_from, int current) {
     return path;
 }
 
-vector<int> a_star_search(vector<Punto>& grafo, int inicio, int objetivo) {
+vector<int> a_star_search(vector<Punto>& grafo, int inicio, int objetivo, vector<int>& visitados) {
     // Inicializar g y h de todos los nodos
     for (auto& punto : grafo) {
         punto.g = numeric_limits<double>::infinity(); // Inicializa g a infinito
@@ -141,41 +141,49 @@ vector<int> a_star_search(vector<Punto>& grafo, int inicio, int objetivo) {
     grafo[inicio].g = 0; // El nodo inicial tiene g = 0
     grafo[inicio].h = calcular_heuristica(grafo[inicio], grafo[objetivo]);
 
+    // Cola de prioridad para explorar nodos en orden de menor f(n)
     priority_queue<pair<double, int>, vector<pair<double, int>>, greater<pair<double, int>>> pq;
     pq.push({f(grafo[inicio]), inicio}); // (f(n), índice del nodo)
-    set<int> closed_set;
-    vector<int> came_from(grafo.size(), -1);
+
+    set<int> closed_set; // Conjunto de nodos ya explorados
+    vector<int> came_from(grafo.size(), -1); // Para reconstruir el camino final
 
     while (!pq.empty()) {
         auto current = pq.top();
         pq.pop();
         int current_index = current.second;
 
+        // Añadir el nodo actual a los visitados
+        visitados.push_back(current_index);
+
+        // Si alcanzamos el objetivo, reconstruir el camino
         if (current_index == objetivo) {
-            return reconstruct_path(came_from, current_index);
+            return reconstruct_path(came_from, current_index); // Camino final encontrado
         }
 
-        closed_set.insert(current_index);
+        closed_set.insert(current_index); // Marcar el nodo como explorado
 
         // Explorar los vecinos del nodo actual
         for (auto& vecino : grafo[current_index].knn_vecinos) {
             int vecino_index = vecino.second;
             double tentative_g_score = grafo[current_index].g + vecino.first;
 
-            // Verificar si el vecino ya está en el cerrado con menor costo
+            // Si el vecino ya ha sido explorado y no tiene mejor g, saltar
             if (closed_set.count(vecino_index) > 0 && tentative_g_score >= grafo[vecino_index].g) {
                 continue;
             }
 
+            // Si encontramos un camino mejor a este vecino, lo actualizamos
             if (tentative_g_score < grafo[vecino_index].g) {
-                came_from[vecino_index] = current_index;
-                grafo[vecino_index].g = tentative_g_score;
-                grafo[vecino_index].h = calcular_heuristica(grafo[vecino_index], grafo[objetivo]);
-                pq.push({f(grafo[vecino_index]), vecino_index});
+                came_from[vecino_index] = current_index; // Guardar de dónde vino
+                grafo[vecino_index].g = tentative_g_score; // Actualizar el costo g
+                grafo[vecino_index].h = calcular_heuristica(grafo[vecino_index], grafo[objetivo]); // Heurística
+                pq.push({f(grafo[vecino_index]), vecino_index}); // Añadir a la cola de prioridad
             }
         }
     }
-    // No se encontró camino (cola vacía al inicio o durante la ejecución)
+
+    // Si no encontramos camino, devolver una lista vacía
     return {};
 }
 
@@ -496,6 +504,51 @@ vector<int> bfs(const vector<Punto>& grafo, int inicio, int objetivo, vector<int
     return {};  // Si no se encuentra un camino
 }
 
+vector<int> hill_climbing(const vector<Punto>& grafo, int inicio, int objetivo, vector<int>& visitados) {
+    int nodo_actual = inicio;
+    visitados.push_back(nodo_actual);  // Añadir el nodo inicial a los visitados
+    vector<int> camino;
+    camino.push_back(nodo_actual);  // Iniciar el camino con el nodo actual
+
+    while (nodo_actual != objetivo) {
+        double mejor_heuristica = calcular_heuristica(grafo[nodo_actual], grafo[objetivo]);
+        int siguiente_nodo = -1;
+
+        // Explorar los vecinos
+        for (const auto& vecino : grafo[nodo_actual].knn_vecinos) {
+            int vecino_index = vecino.second;
+            double heuristica_vecino = calcular_heuristica(grafo[vecino_index], grafo[objetivo]);
+
+            // Si el vecino tiene una mejor heurística, actualizar el siguiente nodo
+            if (heuristica_vecino < mejor_heuristica) {
+                mejor_heuristica = heuristica_vecino;
+                siguiente_nodo = vecino_index;
+            }
+        }
+
+        // Si no encontramos un vecino mejor, estamos en un máximo local
+        if (siguiente_nodo == -1) {
+            cout << "Hill Climbing: Se llegó a un máximo local en el nodo " << nodo_actual << endl;
+            break;
+        }
+
+        // Moverse al siguiente nodo
+        nodo_actual = siguiente_nodo;
+        camino.push_back(nodo_actual);  // Añadir el siguiente nodo al camino
+        visitados.push_back(nodo_actual);  // Añadir el nodo visitado
+    }
+
+    // Si alcanzamos el objetivo
+    if (nodo_actual == objetivo) {
+        cout << "Hill Climbing: Camino encontrado." << endl;
+    } else {
+        cout << "Hill Climbing: No se encontró un camino óptimo (máximo local)." << endl;
+    }
+
+    return camino;
+}
+
+
 void graficar_dfs_bfs(const std::vector<Punto>& puntos, const std::vector<int>& visitados,
                   const std::vector<int>& camino, int windowWidth, int windowHeight,
                   int indiceInicio, int indiceFinal) {
@@ -748,20 +801,23 @@ int main() {
     cin >> k;
 
     knn_for_all_points(puntos_seleccionados, k); 
-    imprimir_vecinos(puntos_seleccionados, k);
+    //imprimir_vecinos(puntos_seleccionados, k);
     
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //int inicio = 2;
-    //int objetivo = 5;
-    // Llamar a la función A* y obtener el camino
-    //vector<int> camino = a_star_search(puntos_seleccionados, inicio, objetivo);
+    int inicio = 2;
+    int objetivo = 43;
+    vector<int> visitados_a_star;  // Para almacenar todos los nodos que A* recorrió
+    vector<int> camino_a_star = a_star_search(puntos_seleccionados, inicio, objetivo, visitados_a_star);
+
+    // Graficar los puntos visitados y el camino encontrado con A*
+    graficar_dfs_bfs(puntos_seleccionados, visitados_a_star, camino_a_star, 800, 600, inicio, objetivo);
 
 
     /*
     // Imprimir el camino si se encontró
-    if (!camino.empty()) {
+    if (!camino_a_star.empty()) {
         cout << "Camino encontrado: ";
-        for (int nodo : camino) {
+        for (int nodo : camino_a_star) {
             cout << nodo << " ";
         }
         cout << endl;
@@ -769,12 +825,33 @@ int main() {
         cout << "No se encontró un camino." << endl;
     }
     */
-    //graficar_puntos(puntos_seleccionados, 800, 600,inicio,objetivo,camino);
+    
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //HILL_CLIMBING
+    //int inicio = 2;
+    //int objetivo = 43;
+    vector<int> visitados_hill_climbing;  // Para almacenar todos los nodos que el Hill Climbing recorrió
+    vector<int> camino_hill_climbing = hill_climbing(puntos_seleccionados, inicio, objetivo, visitados_hill_climbing);
 
-
+    // Graficar los puntos visitados y el camino encontrado con Hill Climbing
+    graficar_dfs_bfs(puntos_seleccionados, visitados_hill_climbing, camino_hill_climbing, 800, 600, inicio, objetivo);
+    
+    // Imprimir el camino si se encontró
+    /*
+    if (!camino_hill_climbing.empty()) {
+        cout << "Camino encontrado: ";
+        for (int nodo : camino_hill_climbing) {
+            cout << nodo << " ";
+        }
+        cout << endl;
+    } else {
+        cout << "No se encontró un camino." << endl;
+    }
+    */
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    
+    //DFS
+    /*
     int inicio = 2;
     int objetivo = 43;
 
@@ -794,12 +871,14 @@ int main() {
 
     // Graficar los puntos visitados y el camino encontrado
     graficar_dfs_bfs(puntos_seleccionados, visitados, camino_dfs, 800, 600, inicio, objetivo);
-    
+    */
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //int inicio = 2;
     //int objetivo = 43;
-
+    
+    //BFS
+    /*
     vector<int> visitados_bfs;  // Para almacenar todos los nodos que el BFS recorrió
     vector<int> camino_bfs = bfs(puntos_seleccionados, inicio, objetivo, visitados_bfs);
 
@@ -815,9 +894,8 @@ int main() {
 
     // Graficar los puntos visitados y el camino encontrado
     graficar_dfs_bfs(puntos_seleccionados, visitados_bfs, camino_bfs, 800, 600, inicio, objetivo);
+    */
 
-
-    
     
 
 
